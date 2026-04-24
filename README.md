@@ -280,9 +280,9 @@ Difficulté : Moyenne (~2 heures)
 ---------------------------------------------------
 ### **Atelier 1 : Ajoutez une fonctionnalité à votre application**  
 **Ajouter une route GET /status** dans votre application qui affiche en JSON :
-* count : nombre d’événements en base
-* last_backup_file : nom du dernier backup présent dans /backup
-* backup_age_seconds : âge du dernier backup
+ count : nombre d’événements en base
+ last_backup_file : nom du dernier backup présent dans /backup
+ backup_age_seconds : âge du dernier backup
 
 ![Status endpoint](./status.png)
 
@@ -290,7 +290,182 @@ Difficulté : Moyenne (~2 heures)
 ### **Atelier 2 : Choisir notre point de restauration**  
 Aujourd’hui nous restaurobs “le dernier backup”. Nous souhaitons **ajouter la capacité de choisir un point de restauration**.
 
-*..Décrir ici votre procédure de restauration (votre runbook)..*  
+
+*### Objectif
+
+L’objectif de cet atelier est de permettre la restauration de la base de données à partir d’un point précis dans le temps, et non uniquement depuis le dernier backup.
+
+Cela permet de répondre à des cas concrets tels que :
+ une erreur humaine (suppression accidentelle de données)
+ une corruption de la base de données
+ un besoin de revenir à un état antérieur
+
+---
+
+### Principe
+
+Les sauvegardes de la base de données SQLite sont stockées dans le PVC `pra-backup` sous forme de fichiers horodatés.
+
+Chaque fichier correspond à une copie complète de la base de données à un instant donné.
+
+Exemples de fichiers présents dans `/backup` :
+ app-1777036321.db
+ app-1777036381.db
+ app-1777036441.db
+
+La restauration consiste à sélectionner un fichier spécifique et à le copier dans le PVC `pra-data` en remplacement de la base active.
+
+---
+
+### Procédure de restauration (Runbook)
+
+#### 1. Lister les backups disponibles
+
+Lancer un pod temporaire pour accéder au volume de backup :
+
+```bash
+kubectl -n pra run debug-backup \
+  --rm -it \
+  --image=alpine \
+  --overrides='
+{
+  "spec": {
+    "containers": [{
+      "name": "debug",
+      "image": "alpine",
+      "command": ["sh"],
+      "stdin": true,
+      "tty": true,
+      "volumeMounts": [{
+        "name": "backup",
+        "mountPath": "/backup"
+      }]
+    }],
+    "volumes": [{
+      "name": "backup",
+      "persistentVolumeClaim": {
+        "claimName": "pra-backup"
+      }
+    }]
+  }
+}'
+````
+
+Puis :
+
+```bash
+ls -lh /backup
+```
+
+Identifier le fichier à restaurer (ex : `app-1777036321.db`), puis quitter :
+
+```bash
+exit
+```
+
+---
+
+#### 2. Arrêter l’application
+
+```bash
+kubectl -n pra scale deployment flask --replicas=0
+```
+
+---
+
+#### 3. Désactiver les sauvegardes automatiques
+
+```bash
+kubectl -n pra patch cronjob sqlite-backup -p '{"spec":{"suspend":true}}'
+```
+
+---
+
+#### 4. Supprimer les jobs en cours
+
+```bash
+kubectl -n pra delete job --all
+```
+
+---
+
+#### 5. Supprimer la base de données de production
+
+```bash
+kubectl -n pra delete pvc pra-data
+```
+
+---
+
+#### 6. Recréer l’infrastructure
+
+```bash
+kubectl apply -f k8s/
+```
+
+À ce stade, une base de données vide est recréée.
+
+---
+
+#### 7. Restaurer depuis un backup spécifique
+
+Modifier le fichier `pra/50-job-restore.yaml` pour utiliser le fichier choisi.
+
+Principe :
+
+ copier `/backup/app-1777036321.db`
+ vers `/data/app.db`
+
+Puis exécuter :
+
+```bash
+kubectl apply -f pra/50-job-restore.yaml
+```
+
+---
+
+#### 8. Vérifier la restauration
+
+Relancer l’accès à l’application :
+
+```bash
+kubectl -n pra port-forward svc/flask 8080:80
+```
+
+Tester dans le navigateur :
+
+```
+/count
+/consultation
+```
+
+Les données doivent correspondre au backup sélectionné.
+
+---
+
+#### 9. Réactiver les sauvegardes
+
+```bash
+kubectl -n pra patch cronjob sqlite-backup -p '{"spec":{"suspend":false}}'
+```
+
+---
+
+### Conclusion
+
+Cette procédure permet de restaurer la base de données à un instant précis.
+
+Contrairement au PCA (Plan de Continuité d’Activité), où la reprise est automatique, cette approche correspond à un PRA (Plan de Reprise d’Activité), nécessitant une intervention manuelle.
+
+Elle permet :
+
+ de garantir la récupération des données après un sinistre
+ de choisir précisément le point de restauration
+ de répondre à des besoins métiers critiques
+
+Cette stratégie améliore fortement la résilience du système, mais nécessite une organisation rigoureuse des sauvegardes et des procédures de restauration.*
+
+  
   
 ---------------------------------------------------
 Evaluation
