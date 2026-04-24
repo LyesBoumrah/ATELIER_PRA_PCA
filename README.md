@@ -231,27 +231,48 @@ Faites preuve de pédagogie et soyez clair dans vos explications et procedures d
 **Exercice 1 :**  
 Quels sont les composants dont la perte entraîne une perte de données ?  
   
-*..Répondez à cet exercice ici..*
+*Les composants dont la perte entraîne une perte de données sont les volumes persistants, en particulier le PVC `pra-data` qui contient la base de données SQLite.
+Le pod ne contient pas les données. Sa suppression n’entraîne donc pas de perte de données.*
 
 **Exercice 2 :**  
 Expliquez nous pourquoi nous n'avons pas perdu les données lors de la supression du PVC pra-data  
   
-*..Répondez à cet exercice ici..*
+*Nous n’avons pas perdu les données lors de la suppression du pod car elles sont stockées dans un volume persistant (PVC `pra-data`), indépendant du pod.
+Lorsque le pod est supprimé, Kubernetes en recrée automatiquement un nouveau qui se reconnecte au même volume, ce qui permet de conserver les données.*
 
 **Exercice 3 :**  
 Quels sont les RTO et RPO de cette solution ?  
   
-*..Répondez à cet exercice ici..*
+*Le RTO (Recovery Time Objective) correspond au temps nécessaire pour restaurer le service après un incident.
+Dans cette solution, il est de l’ordre de quelques secondes à quelques minutes, le temps de recréer le volume et de restaurer la base de données.
+Le RPO (Recovery Point Objective) correspond à la quantité maximale de données pouvant être perdue.
+Les sauvegardes étant réalisées toutes les minutes, la perte maximale de données est d’environ 1 minute.*
 
 **Exercice 4 :**  
 Pourquoi cette solution (cet atelier) ne peux pas être utilisé dans un vrai environnement de production ? Que manque-t-il ?   
   
-*..Répondez à cet exercice ici..*
+*Cette solution ne peut pas être utilisée en production car elle présente plusieurs limitations :
+- Les volumes ne sont pas répliqués
+- Les données sont stockées localement
+- Les sauvegardes ne sont pas externalisées
+- Il n’y a pas de haute disponibilité multi-zone
+- Il n’y a pas de monitoring ni d’alerting
+- Il n’y a pas de mécanismes de sécurité avancés*
   
 **Exercice 5 :**  
 Proposez une archtecture plus robuste.   
   
-*..Répondez à cet exercice ici..*
+*Une architecture plus robuste pourrait inclure :
+
+- Un stockage distribué et répliqué (ex : Ceph, EBS, GCP Persistent Disk)
+- Une base de données plus robuste (ex : PostgreSQL)
+- Des sauvegardes externalisées (ex : S3)
+- Une réplication multi-zone
+- Un système de monitoring et d’alerting (Prometheus, Grafana)
+- Une automatisation des restaurations
+- Des mécanismes de sécurité (authentification, chiffrement)
+
+Cette architecture permettrait d’améliorer la disponibilité et la résilience du système.*
 
 ---------------------------------------------------
 Séquence 6 : Ateliers  
